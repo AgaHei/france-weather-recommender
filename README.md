@@ -1,5 +1,10 @@
 # France Weather Recommender — MLOps Pipeline
 
+![Python](https://img.shields.io/badge/python-3.11-blue)
+![Airflow](https://img.shields.io/badge/airflow-2.8-orange)
+![MLflow](https://img.shields.io/badge/mlflow-2.8-green)
+![License](https://img.shields.io/badge/license-MIT-lightgrey)
+
 **End-to-end ML system for recommending weekend destinations based on weather forecasts.**
 
 Technologies: Python, PostgreSQL (Neon), Airflow, MLflow, scikit-learn, Docker
