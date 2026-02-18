@@ -2,7 +2,6 @@
 
 **End-to-end ML system for recommending weekend destinations based on weather forecasts.**
 
-Built by: Aga (AI Architect Certification Preparation)  
 Technologies: Python, PostgreSQL (Neon), Airflow, MLflow, scikit-learn, Docker
 
 ---
@@ -30,11 +29,11 @@ This is a **production-grade MLOps system** that:
 │                        DATA PIPELINE                            │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  DAG 1: fetch_weather (daily, 6am)                             │
-│    Open-Meteo API → raw_weather table                          │
+│  DAG 1: fetch_weather (daily, 6am)                              │
+│    Open-Meteo API → raw_weather table                           │
 │         ↓                                                       │
-│  DAG 2: compute_features (triggered by DAG 1)                  │
-│    raw_weather → rolling windows → weather_features table      │
+│  DAG 2: compute_features (triggered by DAG 1)                   │
+│    raw_weather → rolling windows → weather_features table       │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 
@@ -42,20 +41,20 @@ This is a **production-grade MLOps system** that:
 │                      TRAINING PIPELINE                          │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  DAG 3: retrain_models (weekly, Sunday midnight)               │
-│    ┌──────────────────┐         ┌──────────────────┐           │
-│    │   K-Means Model  │         │ Regression Model │           │
-│    │   (clustering)   │         │ (comfort score)  │           │
-│    └────────┬─────────┘         └────────┬─────────┘           │
-│             │                            │                     │
-│             ├────────── MLflow ──────────┤                     │
-│             │       (experiment          │                     │
-│             │        tracking)           │                     │
-│             ↓                            ↓                     │
-│    Champion/Challenger Comparison                              │
-│      - If new model better → promote                           │
-│      - Log to model_runs table                                 │
-│      - Save artifacts                                          │
+│  DAG 3: retrain_models (weekly, Sunday midnight)                │
+│    ┌──────────────────┐         ┌──────────────────┐            │
+│    │   K-Means Model  │         │ Regression Model │            │
+│    │   (clustering)   │         │ (comfort score)  │            │
+│    └────────┬─────────┘         └────────┬─────────┘            │
+│             │                            │                      │
+│             ├────────── MLflow ──────────┤                      │
+│             │       (experiment          │                      │
+│             │        tracking)           │                      │
+│             ↓                            ↓                      │
+│    Champion/Challenger Comparison                               │
+│      - If new model better → promote                            │
+│      - Log to model_runs table                                  │
+│      - Save artifacts                                           │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 
@@ -63,18 +62,18 @@ This is a **production-grade MLOps system** that:
 │                     SERVING PIPELINE                            │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  DAG 4: generate_recommendations (daily, 7am)                  │
+│  DAG 4: generate_recommendations (daily, 7am)                   │
 │    Load champion models                                         │
 │         ↓                                                       │
-│    Stage 1: K-Means (coarse filter)                            │
-│      - Cluster cities by weather profile                       │
-│      - Identify "good weather" clusters                        │
+│    Stage 1: K-Means (coarse filter)                             │
+│      - Cluster cities by weather profile                        │
+│      - Identify "good weather" clusters                         │
 │         ↓                                                       │
-│    Stage 2: Regression (fine ranking)                          │
-│      - Predict comfort scores                                  │
-│      - Rank cities within good clusters                        │
+│    Stage 2: Regression (fine ranking)                           │
+│      - Predict comfort scores                                   │
+│      - Rank cities within good clusters                         │
 │         ↓                                                       │
-│    Write to recommendations table                              │
+│    Write to recommendations table                               │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -342,4 +341,4 @@ requirements.txt                # Python dependencies
 
 ---
 
-Built with ❤️ as an AI Architect certification project.
+Built as an personal exercice project for AI Architect certification at Jedha (Paris).
