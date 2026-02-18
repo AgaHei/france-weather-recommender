@@ -1,0 +1,70 @@
+# Environment
+.env
+*.env
+!.env.example
+
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Airflow
+logs/
+airflow.db
+airflow.cfg
+dags/__pycache__/
+
+# MLflow & Models
+mlflow/mlruns/
+mlflow/artifacts/
+mlflow/models/*.joblib
+*.pkl
+*.model
+*.h5
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker
+.dockerignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs & Cache
+*.log
+logs/
+.cache/
+.coverage
+htmlcov/
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
