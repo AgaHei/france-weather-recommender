@@ -197,8 +197,19 @@ class WeatherClusterModel:
     
     @classmethod
     def load(cls, filepath: str):
-        """Load a trained model from disk."""
-        model_data = joblib.load(filepath)
+        """Load a trained model from disk with numpy compatibility handling."""
+        try:
+            model_data = joblib.load(filepath)
+        except (ValueError, TypeError) as e:
+            if "BitGenerator" in str(e) or "MT19937" in str(e):
+                print(f"⚠️  Numpy compatibility issue when loading {filepath}: {e}")
+                print("💡 This usually happens when models are saved with a different numpy version.")
+                raise RuntimeError(
+                    f"Model compatibility issue. Please retrain models with current environment. "
+                    f"Run dag_retrain_models to generate fresh models."
+                ) from e
+            else:
+                raise  # Re-raise other errors
         
         instance = cls(n_clusters=model_data['n_clusters'])
         instance.model = model_data['model']

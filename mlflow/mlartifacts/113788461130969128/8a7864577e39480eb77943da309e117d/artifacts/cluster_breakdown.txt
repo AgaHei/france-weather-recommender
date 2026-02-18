@@ -1,0 +1,4 @@
+cluster_0: size=5, temp=11.9°C, precip=9.0mm, wind=30.2 km/h
+cluster_1: size=8, temp=9.2°C, precip=22.3mm, wind=23.3 km/h
+cluster_2: size=2, temp=10.4°C, precip=70.3mm, wind=32.3 km/h
+cluster_3: size=5, temp=11.2°C, precip=19.1mm, wind=47.6 km/h

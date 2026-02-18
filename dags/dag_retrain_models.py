@@ -39,17 +39,14 @@ from src.features.engineer import get_kmeans_matrix, get_regression_matrix
 from src.models.clustering import WeatherClusterModel
 from src.models.regression import ComfortScoreModel
 
-# MLflow setup
+# MLflow setup (will be configured inside functions)
 import mlflow
 import mlflow.sklearn
 
 MLFLOW_TRACKING_URI = os.getenv('MLFLOW_TRACKING_URI', 'http://mlflow:5000')
-mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
-mlflow.set_experiment("weather-models")
 
 # Model save directory
 MODELS_DIR = '/opt/airflow/mlflow/models'
-os.makedirs(MODELS_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # DAG configuration
@@ -186,6 +183,13 @@ def train_clustering_model(**context):
     Champion promotion criteria:
     - New silhouette score > current champion silhouette + 0.05
     """
+    # Configure MLflow (do this inside function, not at module level)
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    mlflow.set_experiment("weather-models")
+    
+    # Ensure models directory exists
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    
     print("\n" + "="*70)
     print("TRAINING K-MEANS CLUSTERING MODEL")
     print("="*70)
@@ -225,8 +229,10 @@ def train_clustering_model(**context):
         model_path = os.path.join(MODELS_DIR, f'kmeans_{timestamp}.joblib')
         model.save(model_path)
         
-        # Log model to MLflow
-        mlflow.sklearn.log_model(model.model, "kmeans_model")
+        # Log model to MLflow (using artifact approach for compatibility)
+        mlflow.log_artifact(model_path, "kmeans_model")
+        mlflow.log_param("model_type", "kmeans")
+        mlflow.log_param("n_clusters", model.n_clusters)
         
         print(f"\n✅ K-Means training complete!")
         print(f"   Silhouette score: {metrics['silhouette_score']}")
@@ -287,6 +293,10 @@ def train_regression_model(**context):
     Champion promotion criteria:
     - New test R² > current champion R² + 0.01
     """
+    # Configure MLflow (do this inside function, not at module level)
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    mlflow.set_experiment("weather-models")
+    
     print("\n" + "="*70)
     print("TRAINING REGRESSION MODEL")
     print("="*70)
@@ -326,8 +336,10 @@ def train_regression_model(**context):
         model_path = os.path.join(MODELS_DIR, f'regression_{timestamp}.joblib')
         model.save(model_path)
         
-        # Log model to MLflow
-        mlflow.sklearn.log_model(model.model, "regression_model")
+        # Log model to MLflow (using artifact approach for compatibility)
+        mlflow.log_artifact(model_path, "regression_model")
+        mlflow.log_param("model_type", "gradient_boosting")
+        mlflow.log_param("n_estimators", 100)
         
         print(f"\n✅ Regression training complete!")
         print(f"   Test R²: {metrics['test_r2']:.3f}")

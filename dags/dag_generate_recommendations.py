@@ -90,10 +90,40 @@ def load_champion_models() -> tuple:
         )
     
     print("📂 Loading champion models...")
-    kmeans_model = WeatherClusterModel.load(kmeans_path)
-    regression_model = ComfortScoreModel.load(regression_path)
     
-    return kmeans_model, regression_model
+    try:
+        kmeans_model = WeatherClusterModel.load(kmeans_path)
+        regression_model = ComfortScoreModel.load(regression_path)
+        return kmeans_model, regression_model
+        
+    except (ValueError, TypeError) as e:
+        if "BitGenerator" in str(e) or "MT19937" in str(e):
+            print(f"⚠️  Numpy version compatibility issue detected: {e}")
+            print("🔄 Attempting to find latest models from recent training...")
+            
+            # Try to find the most recent models instead
+            import glob
+            kmeans_files = glob.glob(os.path.join(MODELS_DIR, 'kmeans_*.joblib'))
+            regression_files = glob.glob(os.path.join(MODELS_DIR, 'regression_*.joblib'))
+            
+            if kmeans_files and regression_files:
+                # Get the most recent files
+                latest_kmeans = max(kmeans_files, key=os.path.getctime)
+                latest_regression = max(regression_files, key=os.path.getctime)
+                
+                print(f"📂 Trying latest K-Means model: {latest_kmeans}")
+                print(f"📂 Trying latest Regression model: {latest_regression}")
+                
+                kmeans_model = WeatherClusterModel.load(latest_kmeans)
+                regression_model = ComfortScoreModel.load(latest_regression)
+                return kmeans_model, regression_model
+            else:
+                raise RuntimeError(
+                    f"Model compatibility issue and no recent models found. "
+                    f"Please run dag_retrain_models to generate fresh models."
+                )
+        else:
+            raise  # Re-raise other errors
 
 
 def load_today_features() -> pd.DataFrame:
@@ -142,6 +172,7 @@ def generate_recommendations(**context):
     Two-stage process:
     1. K-Means clustering (coarse filter)
     2. Regression scoring (fine ranking)
+    3. Join with hotels data (enrichment)
     """
     print("\n" + "="*70)
     print("GENERATING DAILY RECOMMENDATIONS")
@@ -213,6 +244,35 @@ def generate_recommendations(**context):
     # Add ranking
     recommendations_df['rank'] = range(1, len(recommendations_df) + 1)
     
+    # Stage 3: Join with hotels (enrichment)
+    print(f"\n🏨 Stage 3: Fetching hotels for top cities...")
+    
+    top_cities_for_hotels = recommendations_df.head(3)['city'].tolist()
+    
+    hotels_query = """
+        SELECT city, hotel_name, hotel_type, stars, address, latitude, longitude, amenities
+        FROM hotels
+        WHERE city = ANY(%s)
+        ORDER BY city, stars DESC NULLS LAST, hotel_name
+    """
+    
+    hotels_data = execute_query(hotels_query, (top_cities_for_hotels,))
+    
+    if hotels_data:
+        hotels_by_city = {}
+        for hotel in hotels_data:
+            city = hotel['city']
+            if city not in hotels_by_city:
+                hotels_by_city[city] = []
+            hotels_by_city[city].append(hotel)
+        
+        print(f"✅ Found hotels for {len(hotels_by_city)} cities:")
+        for city, hotels in hotels_by_city.items():
+            print(f"   {city}: {len(hotels)} hotels")
+    else:
+        print(f"⚠️  No hotel data available yet (run dag_fetch_hotels first)")
+        hotels_by_city = {}
+    
     print(f"\n🏆 Top 5 recommendations for this weekend:")
     top5 = recommendations_df.head(5)
     
@@ -221,6 +281,15 @@ def generate_recommendations(**context):
         print(f"      Cluster: {row.cluster_id}")
         print(f"      Predicted score: {row.comfort_score_pred:.1f}/100")
         print(f"      Actual score: {row.comfort_score_actual:.1f}/100")
+        
+        # Show hotels if available
+        if row.city in hotels_by_city:
+            city_hotels = hotels_by_city[row.city][:5]  # Top 5 hotels
+            print(f"      Hotels ({len(city_hotels)}):")
+            for hotel in city_hotels:
+                stars_display = "⭐" * (hotel['stars'] or 0) if hotel['stars'] else ""
+                print(f"         • {hotel['hotel_name']} {stars_display}")
+        
         print()
     
     # Prepare records for database
