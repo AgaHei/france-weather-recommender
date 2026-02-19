@@ -95,10 +95,10 @@ This is a **production-grade MLOps system** that:
 │  Streamlit Web App (deployed to HF Spaces)                      │
 │    ┌──────────────────┐         ┌──────────────────┐            │
 │    │   Profile        │         │ Interactive Map  │            │
-│    │   Selector       │         │  (Plotly/Mapbox)│            │
+│    │   Selector       │         │  (Plotly/Mapbox) │            │
 │    └────────┬─────────┘         └────────┬─────────┘            │
 │             │                            │                      │
-│             ├────── Neon Database ──────┤                      │
+│             ├────── Neon Database  ──────┤                      │
 │             │      (recommendations      │                      │
 │             │       + profile_scores)    │                      │
 │             ↓                            ↓                      │
@@ -377,7 +377,7 @@ The system supports **5 distinct user profiles** with customized comfort score c
 
 ## 🎯 Learning Outcomes
 
-By building this project, you master:
+By building this project, these notions are reviewed and learned:
 - ✅ End-to-end ML pipeline (data → training → deployment)
 - ✅ Airflow orchestration (5 DAGs, dependencies, scheduling)
 - ✅ MLflow experiment tracking
@@ -395,7 +395,7 @@ By building this project, you master:
 - ✅ Model evaluation (R², silhouette score, cross-validation)
 - ✅ Git-based CI/CD workflows
 
-**Perfect for:** AI Architect exam, ML Engineer interviews, portfolio projects
+**Suitable for:** AI Architect exam, ML Engineer interviews, portfolio projects
 
 ---
 
@@ -458,4 +458,4 @@ requirements.txt                # Python dependencies
 
 ---
 
-Built as an personal exercice project for AI Architect certification at Jedha (Paris).
+Built as a personal exercice project for AI Architect certification at Jedha (Paris).
