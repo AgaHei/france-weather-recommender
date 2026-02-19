@@ -1,0 +1,245 @@
+name: MLOps CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:  # Allow manual triggers
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # ==========================================================================
+  # JOB 1: Run Tests
+  # ==========================================================================
+  test:
+    name: 🧪 Test Suite
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov black flake8
+      
+      - name: Run feature engineering tests
+        run: |
+          pytest tests/test_features.py -v --cov=src/features --cov-report=term
+      
+      - name: Run model tests
+        run: |
+          pytest tests/test_models.py -v --cov=src/models --cov-report=term
+      
+      - name: Generate coverage report
+        run: |
+          pytest tests/ --cov=src --cov-report=xml --cov-report=term
+      
+      - name: Upload coverage to artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+  
+  # ==========================================================================
+  # JOB 2: Code Quality Checks
+  # ==========================================================================
+  lint:
+    name: 🎨 Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install linting tools
+        run: |
+          pip install black flake8 isort
+      
+      - name: Check code formatting (Black)
+        run: |
+          black --check src/ dags/ tests/ scripts/ --line-length 100 || true
+          # Note: || true to not fail CI, just warn
+      
+      - name: Lint with Flake8
+        run: |
+          flake8 src/ dags/ --max-line-length=100 --ignore=E203,W503 || true
+      
+      - name: Check import sorting (isort)
+        run: |
+          isort --check-only src/ dags/ tests/ --profile black || true
+  
+  # ==========================================================================
+  # JOB 3: Security Scan
+  # ==========================================================================
+  security:
+    name: 🔒 Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install safety
+        run: pip install safety
+      
+      - name: Check for security vulnerabilities
+        run: |
+          safety check --json || true
+          # Note: || true to not fail CI on vulnerabilities, just report
+  
+  # ==========================================================================
+  # JOB 4: Build Docker Image
+  # ==========================================================================
+  build:
+    name: 🐳 Build Docker Image
+    needs: [test, lint]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Build Docker image
+        run: |
+          docker build -t france-weather-recommender:${{ github.sha }} .
+          docker tag france-weather-recommender:${{ github.sha }} france-weather-recommender:latest
+      
+      - name: Save Docker image info
+        run: |
+          echo "Built image: france-weather-recommender:${{ github.sha }}"
+          docker images | grep france-weather
+  
+  # ==========================================================================
+  # JOB 5: Deploy (Production)
+  # ==========================================================================
+  deploy:
+    name: 🚀 Deploy to Production
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Deployment notification
+        run: |
+          echo "🎉 Deploying to production..."
+          echo "Commit: ${{ github.sha }}"
+          echo "Author: ${{ github.actor }}"
+          echo "Branch: ${{ github.ref }}"
+      
+      # In a real production setup, you would:
+      # - Push Docker image to registry (Docker Hub, ECR, GCR)
+      # - Trigger Airflow DAG refresh via API
+      # - Update Kubernetes/ECS deployment
+      # - Run smoke tests
+      
+      - name: Placeholder - Trigger Airflow refresh
+        run: |
+          echo "Would trigger: curl -X POST http://airflow:8080/api/v1/dags/*/dagRuns"
+      
+      - name: Placeholder - Run smoke tests
+        run: |
+          echo "Would run: pytest tests/test_integration.py --smoke"
+  
+  # ==========================================================================
+  # JOB 6: Model Performance Check
+  # ==========================================================================
+  model-check:
+    name: 📊 Model Performance Validation
+    needs: test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt --quiet
+      
+      - name: Train models and check metrics
+        run: |
+          # Train on synthetic data and verify minimum thresholds
+          python -c "
+          from src.models.regression import ComfortScoreModel, create_sample_regression_data
+          from src.models.clustering import WeatherClusterModel, create_sample_kmeans_data
+          import sys
+          
+          # Test regression model meets threshold
+          print('Testing regression model...')
+          X, y = create_sample_regression_data(500)
+          model = ComfortScoreModel(model_type='gradient_boosting')
+          metrics = model.train(X, y, test_size=0.2)
+          
+          if metrics['test_r2'] < 0.75:
+              print(f'FAIL: Regression R² {metrics[\"test_r2\"]} < 0.75 threshold')
+              sys.exit(1)
+          else:
+              print(f'PASS: Regression R² = {metrics[\"test_r2\"]:.3f}')
+          
+          # Test clustering model meets threshold
+          print('Testing clustering model...')
+          X, cities = create_sample_kmeans_data(100)
+          kmeans = WeatherClusterModel(n_clusters=3)
+          metrics = kmeans.train(X, cities)
+          
+          if metrics['silhouette_score'] < 0.3:
+              print(f'FAIL: Silhouette {metrics[\"silhouette_score\"]} < 0.3 threshold')
+              sys.exit(1)
+          else:
+              print(f'PASS: Silhouette = {metrics[\"silhouette_score\"]:.3f}')
+          
+          print('✅ All model checks passed!')
+          "
+  
+  # ==========================================================================
+  # JOB 7: Notification (on failure)
+  # ==========================================================================
+  notify-failure:
+    name: 📢 Notify on Failure
+    needs: [test, lint, build]
+    runs-on: ubuntu-latest
+    if: failure()
+    
+    steps:
+      - name: Create failure summary
+        run: |
+          echo "❌ CI/CD Pipeline Failed"
+          echo "Repository: ${{ github.repository }}"
+          echo "Branch: ${{ github.ref }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Author: ${{ github.actor }}"
+          echo "Check the logs above for details."

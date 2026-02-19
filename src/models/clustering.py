@@ -136,7 +136,9 @@ class WeatherClusterModel:
             }
             
             if city_names is not None:
-                cluster_cities = [city_names[i] for i, label in enumerate(labels) if label == cluster_id]
+                # Only include cities for indices that exist in city_names  
+                cluster_cities = [city_names[i] for i, label in enumerate(labels) 
+                                if label == cluster_id and i < len(city_names)]
                 cluster_info['cities'] = cluster_cities
             
             stats[f'cluster_{cluster_id}'] = cluster_info
