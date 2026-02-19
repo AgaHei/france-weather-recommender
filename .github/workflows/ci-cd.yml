@@ -2,13 +2,13 @@ name: MLOps CI/CD Pipeline
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, master, develop]
   pull_request:
-    branches: [main]
+    branches: [main, master]
   workflow_dispatch:  # Allow manual triggers
 
 env:
-  PYTHON_VERSION: '3.11'
+  PYTHON_VERSION: '3.12'
 
 jobs:
   # ==========================================================================
@@ -142,7 +142,7 @@ jobs:
     name: 🚀 Deploy to Production
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push'
     
     steps:
       - name: Checkout code
@@ -194,9 +194,14 @@ jobs:
         run: |
           # Train on synthetic data and verify minimum thresholds
           python -c "
-          from src.models.regression import ComfortScoreModel, create_sample_regression_data
-          from src.models.clustering import WeatherClusterModel, create_sample_kmeans_data
           import sys
+          import os
+          sys.path.append('tests')
+          sys.path.append('src')
+          
+          from src.models.regression import ComfortScoreModel
+          from src.models.clustering import WeatherClusterModel
+          from test_models import create_sample_regression_data, create_sample_kmeans_data
           
           # Test regression model meets threshold
           print('Testing regression model...')
