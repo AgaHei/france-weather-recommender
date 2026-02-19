@@ -110,13 +110,13 @@ jobs:
           # Note: || true to not fail CI on vulnerabilities, just report
   
   # ==========================================================================
-  # JOB 4: Build Docker Image
+  # JOB 4: Build Docker Image (DISABLED - no Dockerfile yet)
   # ==========================================================================
   build:
     name: 🐳 Build Docker Image
     needs: [test, lint]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
+    if: false  # Temporarily disabled until Dockerfile is added
     
     steps:
       - name: Checkout code
@@ -140,7 +140,7 @@ jobs:
   # ==========================================================================
   deploy:
     name: 🚀 Deploy to Production
-    needs: build
+    needs: [test, lint]  # Removed 'build' dependency since it's disabled
     runs-on: ubuntu-latest
     if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push'
     
@@ -256,7 +256,7 @@ jobs:
   # ==========================================================================
   notify-failure:
     name: 📢 Notify on Failure
-    needs: [test, lint, build]
+    needs: [test, lint, model-check]  # Removed 'build' dependency
     runs-on: ubuntu-latest
     if: failure()
     
