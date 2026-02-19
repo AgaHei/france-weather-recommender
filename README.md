@@ -8,7 +8,7 @@
 ![PostgreSQL](https://img.shields.io/badge/postgresql-neon-blue)
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-1.3-orange)
 ![GitHub Actions](https://img.shields.io/badge/CI%2FCD-github--actions-green)
-![Tests](https://img.shields.io/badge/tests-31%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-44%20passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 **End-to-end ML system for recommending weekend destinations based on weather forecasts with multi-profile support.**
@@ -372,7 +372,7 @@ Implemented a comprehensive CI/CD pipeline that ensures code quality and automat
 ### **🔄 Automated Workflow (.github/workflows/ci-cd.yml)**
 
 **6-Stage Pipeline:**
-1. **🧪 Test** — Runs 31 unit tests with pytest covering all ML components
+1. **🧪 Test** — Runs 44 unit tests with pytest covering all ML components
 2. **🔍 Lint** — Code quality checks with flake8 and black formatter
 3. **🛡️ Security** — Vulnerability scanning with bandit
 4. **🚀 Deploy** — Automated deployment to production environment
@@ -380,7 +380,7 @@ Implemented a comprehensive CI/CD pipeline that ensures code quality and automat
 6. **📢 Notify** — Stakeholder notifications on success/failure
 
 ### **🎯 Key Features:**
-- **Automated Testing:** 31 comprehensive tests covering ML models, feature engineering, and data pipeline
+- **Automated Testing:** 44 comprehensive tests covering ML models, feature engineering, and data pipeline
 - **Quality Gates:** All jobs must pass before deployment
 - **Model Validation:** Prevents regression in ML model performance
 - **Fast Feedback:** Complete pipeline runs in ~3 minutes
@@ -391,12 +391,63 @@ Implemented a comprehensive CI/CD pipeline that ensures code quality and automat
 - **Feature Engineering:** Rolling windows, comfort score calculations
 - **Data Pipeline:** Weather API integration, database operations
 - **Multi-Profile System:** All 5 user profiles validated
+- **Drift Detection:** Statistical tests, Kolmogorov-Smirnov analysis, performance monitoring
 
 **Business Impact:** Zero-downtime deployments, guaranteed code quality, automated model performance monitoring
 
 ---
 
-## 🔮 Future Enhancements (Phase 5 & Beyond)
+## ✅ Phase 5: Production Monitoring (Completed)
+
+**Automated ML Model Drift Detection & Alerting**
+
+Implemented comprehensive monitoring system for production ML model health:
+
+### **📊 Drift Detection Framework**
+
+**3 Types of Drift Monitoring:**
+1. **Feature Drift** — Weather pattern changes using Kolmogorov-Smirnov tests
+2. **Model Performance Drift** — ML metrics degradation over time
+3. **Prediction Drift** — Comfort score distribution shifts
+
+### **🔄 Automated Workflow (DAG 6: detect_drift)**
+
+**Schedule:** Weekly on Sunday 11:00 PM (after model retraining)
+
+**Monitoring Pipeline:**
+1. **Statistical Analysis** — KS tests comparing 7-day vs 28-day windows
+2. **Performance Tracking** — R² and silhouette score trend analysis
+3. **Threshold Detection** — Configurable drift severity (minor/major/critical)
+4. **Database Logging** — Historical drift metrics in `drift_monitoring` table
+5. **Automated Alerting** — Triggers retraining when drift exceeds thresholds
+6. **Comprehensive Reports** — JSON reports with statistical details
+
+### **🎯 Key Capabilities:**
+- **Seasonal Adaptation:** Detects natural weather pattern changes (winter→spring)
+- **Model Health:** Prevents silent model degradation in production
+- **Statistical Rigor:** Scipy-powered Kolmogorov-Smirnov and t-tests
+- **Weather-Optimized Thresholds:** Domain-specific sensitivity tuning
+- **Historical Tracking:** Complete audit trail of model performance
+- **Action Triggers:** Automatic model retraining when drift detected
+
+### **🌤️ Weather-Domain Thresholds:**
+- **Temperature:** KS threshold 0.35 (gradual seasonal changes)
+- **Precipitation:** KS threshold 0.5 (very spiky, high natural variation)  
+- **Wind:** KS threshold 0.4 (moderate natural variation)
+- **Model Performance:** 10% R² drop threshold (ML model tolerance)
+- **Feature Shift:** 2.5 standard deviations (weather volatility accommodation)
+
+### **📈 Statistical Methods:**
+- **Kolmogorov-Smirnov Test:** Non-parametric distribution comparison
+- **Mean Shift Detection:** Standard deviation-based change points
+- **Performance Degradation:** R² drop threshold monitoring
+- **Trend Analysis:** Time-series performance tracking
+
+**Business Impact:** Automated model health monitoring, proactive drift detection, maintained prediction accuracy
+
+---
+
+## 🔮 Future Enhancements (Phase 6 & Beyond)
 
 **Phase 5: Intelligence Layer**
 - Explain AI recommendations (SHAP values)
@@ -427,7 +478,9 @@ By building this project, these notions are reviewed and learned:
 - ✅ Unsupervised learning (K-Means)
 - ✅ Model evaluation (R², silhouette score, cross-validation)
 - ✅ **CI/CD automation (GitHub Actions, automated testing, deployment pipelines)**
-- ✅ **Production-grade testing (31 unit tests, quality gates, model validation)**
+- ✅ **Production-grade testing (44 unit tests, quality gates, model validation)**
+- ✅ **ML monitoring (drift detection, statistical analysis, automated alerting)**
+- ✅ **Production monitoring (KS tests, performance tracking, threshold alerts)**
 
 **Suitable for:** AI Architect exam, ML Engineer interviews, portfolio projects
 
@@ -442,6 +495,7 @@ dags/
   dag_retrain_models.py         # DAG 3: Weekly model training
   dag_generate_recommendations.py  # DAG 4: Daily recommendations
   dag_fetch_hotels.py           # DAG 5: Weekly hotel data from OSM
+  dag_detect_drift.py           # DAG 6: Weekly drift detection & monitoring
 
 src/
   data/
@@ -466,10 +520,13 @@ france-weather-hf/              # HF Spaces deployment
 scripts/
   backfill_historical_weather.py  # One-time data backfill
   train_models.py                 # Standalone model training
+  check_drift.py                  # Drift detection & monitoring
+  add_drift_monitoring_table.py   # Database setup for monitoring
 
-tests/                          # Comprehensive test suite (31 tests)
+tests/                          # Comprehensive test suite (44 tests)
   test_features.py              # Feature engineering tests
   test_models.py                # ML model tests
+  test_drift.py                 # Drift detection tests (13 tests)
   conftest.py                   # Test configuration
 
 .github/workflows/

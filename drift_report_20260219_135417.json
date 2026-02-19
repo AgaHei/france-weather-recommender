@@ -1,0 +1,66 @@
+{
+  "timestamp": "2026-02-19T13:54:14.693587",
+  "feature_drift": {
+    "temp_mean_3d": {
+      "drift_detected": true,
+      "ks_statistic": 0.34676724137931036,
+      "p_value": 6.421460626050146e-14,
+      "mean_shift_std": 0.5515105660712155,
+      "baseline_mean": 7.912189655172415,
+      "current_mean": 9.30225,
+      "reasons": [
+        "KS statistic 0.347 > threshold 0.2"
+      ]
+    },
+    "precip_sum_3d": {
+      "drift_detected": true,
+      "ks_statistic": 0.21185344827586206,
+      "p_value": 2.0503057493953896e-05,
+      "mean_shift_std": 0.26614765645110444,
+      "baseline_mean": 16.49137931034483,
+      "current_mean": 20.6516875,
+      "reasons": [
+        "KS statistic 0.212 > threshold 0.2"
+      ]
+    },
+    "wind_max_3d": {
+      "drift_detected": true,
+      "ks_statistic": 0.3256465517241379,
+      "p_value": 2.6828850512862437e-12,
+      "mean_shift_std": 0.5463006397286747,
+      "baseline_mean": 24.06896551724138,
+      "current_mean": 29.294375000000002,
+      "reasons": [
+        "KS statistic 0.326 > threshold 0.2"
+      ]
+    }
+  },
+  "model_drift": {
+    "regression": {
+      "drift_detected": false,
+      "champion_value": 0.995,
+      "historical_mean": 0.9954000000000001,
+      "performance_drop": 0.00040184850311439314,
+      "reason": null
+    },
+    "kmeans": {
+      "drift_detected": false,
+      "champion_value": 0.384,
+      "historical_mean": 0.3658,
+      "performance_drop": -0.049753963914707475,
+      "reason": null
+    }
+  },
+  "prediction_drift": {
+    "leisure": {
+      "drift_detected": false,
+      "reason": "no_baseline_predictions"
+    }
+  },
+  "overall_drift_detected": true,
+  "recommendations": [
+    "Feature drift detected in temp_mean_3d - consider retraining models",
+    "Feature drift detected in precip_sum_3d - consider retraining models",
+    "Feature drift detected in wind_max_3d - consider retraining models"
+  ]
+}

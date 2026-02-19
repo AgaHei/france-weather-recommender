@@ -1,6 +1,7 @@
 # Core data
 pandas>=2.0.0
 numpy>=1.24.0
+scipy>=1.11.0
 requests>=2.31.0
 
 # Database
@@ -26,3 +27,10 @@ streamlit-folium>=0.15.0
 
 # Utilities
 python-dotenv>=1.0.0
+
+# Testing (for CI/CD)
+pytest>=7.4.0
+pytest-cov>=4.1.0
+black>=23.0.0
+flake8>=6.1.0
+isort>=5.12.0
