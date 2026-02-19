@@ -110,37 +110,11 @@ jobs:
           # Note: || true to not fail CI on vulnerabilities, just report
   
   # ==========================================================================
-  # JOB 4: Build Docker Image (DISABLED - no Dockerfile yet)
-  # ==========================================================================
-  build:
-    name: 🐳 Build Docker Image
-    needs: [test, lint]
-    runs-on: ubuntu-latest
-    if: false  # Temporarily disabled until Dockerfile is added
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Build Docker image
-        run: |
-          docker build -t france-weather-recommender:${{ github.sha }} .
-          docker tag france-weather-recommender:${{ github.sha }} france-weather-recommender:latest
-      
-      - name: Save Docker image info
-        run: |
-          echo "Built image: france-weather-recommender:${{ github.sha }}"
-          docker images | grep france-weather
-  
-  # ==========================================================================
-  # JOB 5: Deploy (Production)
+  # JOB 4: Deploy (Production)
   # ==========================================================================
   deploy:
     name: 🚀 Deploy to Production
-    needs: [test, lint]  # Removed 'build' dependency since it's disabled
+    needs: [test, lint]
     runs-on: ubuntu-latest
     if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push'
     
@@ -156,9 +130,9 @@ jobs:
           echo "Branch: ${{ github.ref }}"
       
       # In a real production setup, you would:
-      # - Push Docker image to registry (Docker Hub, ECR, GCR)
-      # - Trigger Airflow DAG refresh via API
-      # - Update Kubernetes/ECS deployment
+      # - Deploy code to servers
+      # - Trigger Airflow DAG refresh via API  
+      # - Update docker-compose services
       # - Run smoke tests
       
       - name: Placeholder - Trigger Airflow refresh
@@ -170,7 +144,7 @@ jobs:
           echo "Would run: pytest tests/test_integration.py --smoke"
   
   # ==========================================================================
-  # JOB 6: Model Performance Check
+  # JOB 5: Model Performance Check
   # ==========================================================================
   model-check:
     name: 📊 Model Performance Validation
@@ -252,11 +226,11 @@ jobs:
           "
   
   # ==========================================================================
-  # JOB 7: Notification (on failure)
+  # JOB 6: Notification (on failure)
   # ==========================================================================
   notify-failure:
     name: 📢 Notify on Failure
-    needs: [test, lint, model-check]  # Removed 'build' dependency
+    needs: [test, lint, model-check]
     runs-on: ubuntu-latest
     if: failure()
     
