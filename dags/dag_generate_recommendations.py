@@ -90,40 +90,10 @@ def load_champion_models() -> tuple:
         )
     
     print("📂 Loading champion models...")
+    kmeans_model = WeatherClusterModel.load(kmeans_path)
+    regression_model = ComfortScoreModel.load(regression_path)
     
-    try:
-        kmeans_model = WeatherClusterModel.load(kmeans_path)
-        regression_model = ComfortScoreModel.load(regression_path)
-        return kmeans_model, regression_model
-        
-    except (ValueError, TypeError) as e:
-        if "BitGenerator" in str(e) or "MT19937" in str(e):
-            print(f"⚠️  Numpy version compatibility issue detected: {e}")
-            print("🔄 Attempting to find latest models from recent training...")
-            
-            # Try to find the most recent models instead
-            import glob
-            kmeans_files = glob.glob(os.path.join(MODELS_DIR, 'kmeans_*.joblib'))
-            regression_files = glob.glob(os.path.join(MODELS_DIR, 'regression_*.joblib'))
-            
-            if kmeans_files and regression_files:
-                # Get the most recent files
-                latest_kmeans = max(kmeans_files, key=os.path.getctime)
-                latest_regression = max(regression_files, key=os.path.getctime)
-                
-                print(f"📂 Trying latest K-Means model: {latest_kmeans}")
-                print(f"📂 Trying latest Regression model: {latest_regression}")
-                
-                kmeans_model = WeatherClusterModel.load(latest_kmeans)
-                regression_model = ComfortScoreModel.load(latest_regression)
-                return kmeans_model, regression_model
-            else:
-                raise RuntimeError(
-                    f"Model compatibility issue and no recent models found. "
-                    f"Please run dag_retrain_models to generate fresh models."
-                )
-        else:
-            raise  # Re-raise other errors
+    return kmeans_model, regression_model
 
 
 def load_today_features() -> pd.DataFrame:
@@ -169,149 +139,126 @@ def generate_recommendations(**context):
     """
     Main recommendation generation logic.
     
-    Two-stage process:
+    Phase 3 update: Generates recommendations for ALL profiles.
+    
+    Two-stage process (per profile):
     1. K-Means clustering (coarse filter)
     2. Regression scoring (fine ranking)
     3. Join with hotels data (enrichment)
     """
     print("\n" + "="*70)
-    print("GENERATING DAILY RECOMMENDATIONS")
+    print("GENERATING DAILY RECOMMENDATIONS (ALL PROFILES)")
     print("="*70)
     
     # Load models and data
     kmeans_model, regression_model = load_champion_models()
     today_df = load_today_features()
     
-    # Stage 1: K-Means Clustering (coarse filter)
-    print("\n🔍 Stage 1: Clustering cities by weather profile...")
+    # Load all profiles
+    profiles_query = "SELECT profile_name, icon FROM scoring_profiles ORDER BY profile_name"
+    profiles = execute_query(profiles_query)
     
-    X_kmeans, city_names_kmeans = get_kmeans_matrix(today_df)
-    cluster_labels = kmeans_model.predict(X_kmeans)
+    print(f"\n🎯 Generating recommendations for {len(profiles)} profiles...")
     
-    today_df['cluster_id'] = cluster_labels
+    all_recommendations = []
     
-    # Compute cluster statistics
-    cluster_stats = {}
-    for cluster_id in range(kmeans_model.n_clusters):
-        mask = cluster_labels == cluster_id
-        cluster_X = X_kmeans[mask]
+    for profile in profiles:
+        profile_name = profile['profile_name']
+        profile_icon = profile['icon']
         
-        cluster_stats[cluster_id] = {
-            'size': int(mask.sum()),
-            'avg_temp': float(cluster_X[:, 0].mean()),
-            'avg_precip': float(cluster_X[:, 1].mean()),
-            'avg_wind': float(cluster_X[:, 2].mean()),
-            'cities': [city_names_kmeans[i] for i, label in enumerate(cluster_labels) if label == cluster_id]
-        }
-    
-    print("\n📊 Cluster breakdown:")
-    for cluster_id, stats in cluster_stats.items():
-        cities_str = ', '.join(stats['cities'][:3])
-        if len(stats['cities']) > 3:
-            cities_str += f" (+{len(stats['cities']) - 3} more)"
+        print(f"\n{'='*70}")
+        print(f"{profile_icon} Profile: {profile_name.upper()}")
+        print(f"{'='*70}")
         
-        print(f"   Cluster {cluster_id} ({stats['size']} cities): {cities_str}")
-        print(f"      Weather: {stats['avg_temp']:.1f}°C, "
-              f"{stats['avg_precip']:.1f}mm rain, "
-              f"{stats['avg_wind']:.1f} km/h wind")
-    
-    # Rank clusters by comfort
-    ranked_clusters = kmeans_model.rank_clusters_by_comfort(
-        {f'cluster_{i}': stats for i, stats in cluster_stats.items()}
-    )
-    
-    print(f"\n🏆 Clusters ranked best → worst: {ranked_clusters}")
-    
-    # Filter to top 2 clusters (good weather)
-    good_clusters = ranked_clusters[:2]
-    good_cities_mask = today_df['cluster_id'].isin(good_clusters)
-    
-    print(f"   Keeping cities in clusters {good_clusters} for fine ranking")
-    
-    # Stage 2: Regression Scoring (fine ranking)
-    print("\n🎯 Stage 2: Predicting comfort scores...")
-    
-    X_reg, y_actual, city_names_reg = get_regression_matrix(today_df)
-    y_pred = regression_model.predict(X_reg)
-    
-    today_df['comfort_score_pred'] = y_pred
-    today_df['comfort_score_actual'] = y_actual
-    
-    # Filter to good clusters and rank
-    recommendations_df = today_df[good_cities_mask].copy()
-    recommendations_df = recommendations_df.sort_values('comfort_score_pred', ascending=False)
-    
-    # Add ranking
-    recommendations_df['rank'] = range(1, len(recommendations_df) + 1)
-    
-    # Stage 3: Join with hotels (enrichment)
-    print(f"\n🏨 Stage 3: Fetching hotels for top cities...")
-    
-    top_cities_for_hotels = recommendations_df.head(3)['city'].tolist()
-    
-    hotels_query = """
-        SELECT city, hotel_name, hotel_type, stars, address, latitude, longitude, amenities
-        FROM hotels
-        WHERE city = ANY(%s)
-        ORDER BY city, stars DESC NULLS LAST, hotel_name
-    """
-    
-    hotels_data = execute_query(hotels_query, (top_cities_for_hotels,))
-    
-    if hotels_data:
-        hotels_by_city = {}
-        for hotel in hotels_data:
-            city = hotel['city']
-            if city not in hotels_by_city:
-                hotels_by_city[city] = []
-            hotels_by_city[city].append(hotel)
+        # Load profile-specific scores
+        profile_scores_query = """
+            SELECT city, comfort_score
+            FROM profile_scores
+            WHERE feature_date = CURRENT_DATE
+              AND profile_name = %s
+        """
         
-        print(f"✅ Found hotels for {len(hotels_by_city)} cities:")
-        for city, hotels in hotels_by_city.items():
-            print(f"   {city}: {len(hotels)} hotels")
-    else:
-        print(f"⚠️  No hotel data available yet (run dag_fetch_hotels first)")
-        hotels_by_city = {}
-    
-    print(f"\n🏆 Top 5 recommendations for this weekend:")
-    top5 = recommendations_df.head(5)
-    
-    for i, row in enumerate(top5.itertuples(), 1):
-        print(f"   {i}. {row.city}")
-        print(f"      Cluster: {row.cluster_id}")
-        print(f"      Predicted score: {row.comfort_score_pred:.1f}/100")
-        print(f"      Actual score: {row.comfort_score_actual:.1f}/100")
+        profile_scores_data = execute_query(profile_scores_query, (profile_name,))
         
-        # Show hotels if available
-        if row.city in hotels_by_city:
-            city_hotels = hotels_by_city[row.city][:5]  # Top 5 hotels
-            print(f"      Hotels ({len(city_hotels)}):")
-            for hotel in city_hotels:
-                stars_display = "⭐" * (hotel['stars'] or 0) if hotel['stars'] else ""
-                print(f"         • {hotel['hotel_name']} {stars_display}")
+        if not profile_scores_data:
+            print(f"⚠️  No scores found for {profile_name}, skipping...")
+            continue
         
-        print()
+        # Merge with today's features
+        profile_scores_df = pd.DataFrame(profile_scores_data)
+        today_profile_df = today_df.merge(profile_scores_df, on='city', how='left', suffixes=('', '_profile'))
+        today_profile_df['comfort_score_actual'] = today_profile_df['comfort_score_profile']
+        
+        # Stage 1: K-Means Clustering (coarse filter)
+        print("\n🔍 Stage 1: Clustering cities...")
+        
+        X_kmeans, city_names_kmeans = get_kmeans_matrix(today_profile_df)
+        cluster_labels = kmeans_model.predict(X_kmeans)
+        
+        today_profile_df['cluster_id'] = cluster_labels
+        
+        # Compute cluster statistics
+        cluster_stats = {}
+        for cluster_id in range(kmeans_model.n_clusters):
+            mask = cluster_labels == cluster_id
+            cluster_X = X_kmeans[mask]
+            
+            cluster_stats[cluster_id] = {
+                'size': int(mask.sum()),
+                'avg_temp': float(cluster_X[:, 0].mean()),
+                'avg_precip': float(cluster_X[:, 1].mean()),
+                'avg_wind': float(cluster_X[:, 2].mean()),
+            }
+        
+        # Rank clusters by comfort
+        ranked_clusters = kmeans_model.rank_clusters_by_comfort(
+            {f'cluster_{i}': stats for i, stats in cluster_stats.items()}
+        )
+        
+        # Filter to top 2 clusters (good weather)
+        good_clusters = ranked_clusters[:2]
+        good_cities_mask = today_profile_df['cluster_id'].isin(good_clusters)
+        
+        print(f"   🏆 Best clusters: {good_clusters}")
+        
+        # Stage 2: Use profile-specific scores for ranking
+        print("\n🎯 Stage 2: Ranking by profile scores...")
+        
+        # Filter to good clusters and rank by profile score
+        recommendations_df = today_profile_df[good_cities_mask].copy()
+        recommendations_df = recommendations_df.sort_values('comfort_score_actual', ascending=False)
+        
+        # Add ranking
+        recommendations_df['rank'] = range(1, len(recommendations_df) + 1)
+        recommendations_df['profile_name'] = profile_name
+        
+        print(f"\n🏆 Top 5 for {profile_name}:")
+        top5 = recommendations_df.head(5)
+        
+        for i, row in enumerate(top5.itertuples(), 1):
+            print(f"   {i}. {row.city}: {row.comfort_score_actual:.1f}/100")
+        
+        # Prepare records for database
+        recommendation_date = today_profile_df['feature_date'].iloc[0]
+        
+        for row in recommendations_df.itertuples():
+            all_recommendations.append({
+                'recommendation_date': recommendation_date,
+                'city': row.city,
+                'profile_name': profile_name,
+                'cluster_id': int(row.cluster_id),
+                'comfort_score_pred': round(float(row.comfort_score_actual), 2),
+                'rank': int(row.rank),
+            })
     
-    # Prepare records for database
-    recommendation_date = today_df['feature_date'].iloc[0]
-    
-    records = []
-    for row in recommendations_df.itertuples():
-        records.append({
-            'recommendation_date': recommendation_date,
-            'city': row.city,
-            'cluster_id': int(row.cluster_id),
-            'comfort_score_pred': round(float(row.comfort_score_pred), 2),
-            'rank': int(row.rank),
-        })
-    
-    # Write to database
-    print(f"\n💾 Writing {len(records)} recommendations to database...")
+    # Write all recommendations to database
+    print(f"\n💾 Writing {len(all_recommendations)} recommendations to database...")
+    print(f"   ({len(profiles)} profiles × ~{len(all_recommendations)//len(profiles)} cities per profile)")
     
     bulk_insert(
         table='recommendations',
-        rows=records,
-        conflict_action='(recommendation_date, city) DO UPDATE SET '
+        rows=all_recommendations,
+        conflict_action='(recommendation_date, city, profile_name) DO UPDATE SET '
                        'cluster_id = EXCLUDED.cluster_id, '
                        'comfort_score_pred = EXCLUDED.comfort_score_pred, '
                        'rank = EXCLUDED.rank, '
@@ -320,43 +267,101 @@ def generate_recommendations(**context):
     
     print(f"✅ Recommendations saved!")
     
+    # Show hotels for top city of leisure profile
+    print("\n🏨 Sample: Hotels for top 'leisure' destination...")
+    
+    leisure_recs = [r for r in all_recommendations if r['profile_name'] == 'leisure']
+    if leisure_recs:
+        top_leisure_city = leisure_recs[0]['city']
+        
+        hotels_query = """
+            SELECT hotel_name, stars
+            FROM hotels
+            WHERE city = %s
+            ORDER BY stars DESC NULLS LAST
+            LIMIT 3
+        """
+        
+        hotels = execute_query(hotels_query, (top_leisure_city,))
+        
+        if hotels:
+            print(f"   {top_leisure_city}:")
+            for hotel in hotels:
+                stars_display = "⭐" * (hotel['stars'] or 0) if hotel['stars'] else ""
+                print(f"      • {hotel['hotel_name']} {stars_display}")
+        else:
+            print(f"   No hotels data yet for {top_leisure_city}")
+    
     # Push summary to XCom
     summary = {
         'recommendation_date': str(recommendation_date),
-        'n_recommendations': len(records),
-        'top_city': top5.iloc[0]['city'],
-        'top_score': float(top5.iloc[0]['comfort_score_pred']),
-        'good_clusters': good_clusters,
+        'n_recommendations': len(all_recommendations),
+        'n_profiles': len(profiles),
+        'profiles': [p['profile_name'] for p in profiles],
     }
     
     context['task_instance'].xcom_push(key='recommendation_summary', value=summary)
     
     print("\n" + "="*70)
-    print("✅ RECOMMENDATIONS GENERATED")
+    print("✅ MULTI-PROFILE RECOMMENDATIONS GENERATED")
     print("="*70)
     
     return summary
 
 
+
 def log_recommendation_stats(**context):
     """
-    Optional: Log statistics about today's recommendations.
+    Log statistics about today's multi-profile recommendations.
+    (Phase 3 update: handles multiple profiles)
     """
     summary = context['task_instance'].xcom_pull(
         task_ids='generate_recommendations',
         key='recommendation_summary'
     )
     
-    print("\n📊 Recommendation Statistics:")
+    print("\n📊 Multi-Profile Recommendation Statistics:")
     print(f"   Date: {summary['recommendation_date']}")
     print(f"   Total recommendations: {summary['n_recommendations']}")
-    print(f"   Top destination: {summary['top_city']} ({summary['top_score']:.1f}/100)")
-    print(f"   Good weather clusters: {summary['good_clusters']}")
+    print(f"   Profiles processed: {summary['n_profiles']}")
+    print(f"   Profile types: {', '.join(summary['profiles'])}")
+    
+    # Get detailed stats per profile
+    print("\n🎯 Top destinations by profile:")
+    
+    from src.data.db import execute_query
+    
+    stats_query = """
+        SELECT profile_name, city, comfort_score_pred, rank
+        FROM recommendations 
+        WHERE recommendation_date = %s
+          AND rank = 1
+        ORDER BY profile_name
+    """
+    
+    top_per_profile = execute_query(stats_query, (summary['recommendation_date'],))
+    
+    # Map profile names to emojis for display
+    profile_icons = {
+        'leisure': '🏖️', 'surfer': '🏄', 'cyclist': '🚴', 
+        'stargazer': '⭐', 'skier': '⛷️'
+    }
+    
+    for profile_rec in top_per_profile:
+        profile = profile_rec['profile_name']
+        city = profile_rec['city']
+        score = profile_rec['comfort_score_pred']
+        icon = profile_icons.get(profile, '🎯')
+        print(f"      {icon} {profile:12s}: {city} ({score:.1f}/100)")
+    
+    # Overall statistics
+    avg_score = summary['n_recommendations'] / summary['n_profiles'] if summary['n_profiles'] > 0 else 0
+    print(f"\n📈 Avg recommendations per profile: {avg_score:.1f}")
     
     # Could add more analytics here:
-    # - Compare to yesterday's recommendations
-    # - Track if top city is changing week-to-week
-    # - Alert if all scores are below threshold (no good destinations!)
+    # - Compare to yesterday's recommendations per profile
+    # - Track if top cities are changing week-to-week
+    # - Alert if all scores are below threshold for any profile
 
 
 # ---------------------------------------------------------------------------

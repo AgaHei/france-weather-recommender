@@ -59,6 +59,8 @@ dag = DAG(
 def compute_and_store_features(**context):
     """
     Read raw weather, compute features, store in weather_features table.
+    
+    Phase 3 update: Now computes comfort scores for ALL profiles.
     """
     print("📊 Reading raw weather data from Neon...")
     
@@ -80,18 +82,72 @@ def compute_and_store_features(**context):
     # Convert to pandas DataFrame
     df = pd.DataFrame(raw_data)
     
-    # Compute features
+    # Compute base features (rolling windows)
     print("🔧 Computing rolling window features...")
     features_df = compute_rolling_features(df, as_of_date=datetime.now().date())
     
     print(f"✅ Computed features for {len(features_df)} cities")
-    print(f"\nSample features:")
-    print(features_df.head(3).to_string(index=False))
     
-    # Convert to list of dicts for database insertion
+    # Phase 3: Load all profiles and compute scores for each
+    print("\n🎯 Computing comfort scores for all profiles...")
+    
+    from src.features.engineer import compute_all_profile_scores
+    
+    profiles_query = "SELECT * FROM scoring_profiles ORDER BY profile_name"
+    profiles_data = execute_query(profiles_query)
+    profiles_df = pd.DataFrame(profiles_data)
+    
+    print(f"   Loaded {len(profiles_df)} profiles: {', '.join(profiles_df['profile_name'].tolist())}")
+    
+    # Compute scores for each city
+    profile_scores_records = []
+    
+    for idx, row in features_df.iterrows():
+        # Compute all profile scores at once
+        scores = compute_all_profile_scores(
+            temp_mean=row['temp_mean_3d'],
+            precipitation=row['precip_sum_3d'],
+            wind_speed_max=row['wind_max_3d'],
+            profiles_df=profiles_df
+        )
+        
+        # Store each profile score as a separate record
+        for profile_name, score in scores.items():
+            profile_scores_records.append({
+                'city': row['city'],
+                'feature_date': row['feature_date'],
+                'profile_name': profile_name,
+                'comfort_score': score
+            })
+    
+    print(f"✅ Computed {len(profile_scores_records)} profile scores ({len(features_df)} cities × {len(profiles_df)} profiles)")
+    
+    # Insert into profile_scores table
+    print("\n💾 Storing profile scores in database...")
+    bulk_insert(
+        table='profile_scores',
+        rows=profile_scores_records,
+        conflict_action='(city, feature_date, profile_name) DO UPDATE SET '
+                       'comfort_score = EXCLUDED.comfort_score, '
+                       'computed_at = EXCLUDED.computed_at'
+    )
+    
+    print(f"✅ Profile scores saved!")
+    
+    # Also update weather_features with default 'leisure' score for backwards compatibility
+    print("\n💾 Updating weather_features table...")
+    
+    leisure_scores = {
+        row['city']: row['comfort_score'] 
+        for row in profile_scores_records 
+        if row['profile_name'] == 'leisure'
+    }
+    
+    for idx, row in features_df.iterrows():
+        features_df.at[idx, 'comfort_score'] = leisure_scores.get(row['city'], 0)
+    
     feature_records = features_df.to_dict('records')
     
-    # Insert into Neon
     bulk_insert(
         table='weather_features',
         rows=feature_records,
@@ -106,54 +162,74 @@ def compute_and_store_features(**context):
                        'computed_at = EXCLUDED.computed_at'
     )
     
-    print(f"✅ Inserted/updated {len(feature_records)} rows in weather_features table")
+    print(f"✅ Weather features updated!")
     
-    # Push feature summary to XCom
+    # Show sample scores
+    print("\n📊 Sample profile scores for top cities:")
+    sample_city = features_df.iloc[0]['city']
+    sample_scores = {r['profile_name']: r['comfort_score'] 
+                     for r in profile_scores_records 
+                     if r['city'] == sample_city}
+    
+    print(f"\n   {sample_city}:")
+    for profile, score in sorted(sample_scores.items(), key=lambda x: x[1], reverse=True):
+        print(f"      {profile:12s}: {score:5.1f}/100")
+    
+    # Push summary to XCom
     summary = {
         'feature_count': len(feature_records),
-        'avg_comfort_score': float(features_df['comfort_score'].mean()),
-        'max_comfort_score': float(features_df['comfort_score'].max()),
-        'best_city': features_df.loc[features_df['comfort_score'].idxmax(), 'city'],
+        'profile_scores_count': len(profile_scores_records),
+        'profiles': profiles_df['profile_name'].tolist(),
+        'sample_scores': sample_scores
     }
     
     context['task_instance'].xcom_push(key='feature_summary', value=summary)
-    
-    print(f"\n📈 Feature summary:")
-    print(f"   Average comfort score: {summary['avg_comfort_score']:.1f}/100")
-    print(f"   Best city today: {summary['best_city']} ({summary['max_comfort_score']:.1f}/100)")
     
     return summary
 
 
 def log_feature_stats(**context):
     """
-    Optional: Log feature distribution for monitoring drift.
-    In a real system, you'd compare this to historical distributions.
+    Log feature statistics and profile score distributions.
     """
+    summary = context['task_instance'].xcom_pull(
+        task_ids='compute_features',
+        key='feature_summary'
+    )
+    
+    print("\n📊 Feature computation summary:")
+    print(f"   Total features computed: {summary['feature_count']}")
+    print(f"   Profile scores computed: {summary['profile_scores_count']}")
+    print(f"   Profiles: {', '.join(summary['profiles'])}")
+    
+    print(f"\n📈 Sample profile scores:")
+    for profile, score in sorted(summary['sample_scores'].items(), key=lambda x: x[1], reverse=True):
+        print(f"   {profile:12s}: {score:5.1f}/100")
+    
+    # Query aggregate stats per profile
     from src.data.db import execute_query
     
     query = """
         SELECT 
-            AVG(temp_mean_3d) as avg_temp,
-            AVG(precip_sum_3d) as avg_rain,
-            AVG(wind_max_3d) as avg_wind,
-            AVG(comfort_score) as avg_comfort,
-            STDDEV(comfort_score) as std_comfort
-        FROM weather_features
+            profile_name,
+            AVG(comfort_score) as avg_score,
+            MAX(comfort_score) as max_score,
+            MIN(comfort_score) as min_score
+        FROM profile_scores
         WHERE feature_date = CURRENT_DATE
+        GROUP BY profile_name
+        ORDER BY avg_score DESC
     """
     
-    stats = execute_query(query)[0]
+    stats = execute_query(query)
     
-    print("\n📊 Feature statistics (today):")
-    print(f"   Avg temperature (3d):   {stats['avg_temp']:.1f}°C")
-    print(f"   Avg precipitation (3d): {stats['avg_rain']:.1f}mm")
-    print(f"   Avg wind (3d):          {stats['avg_wind']:.1f} km/h")
-    print(f"   Avg comfort score:      {stats['avg_comfort']:.1f} ± {stats['std_comfort']:.1f}")
+    if stats:
+        print(f"\n📊 Profile score distributions (today):")
+        for row in stats:
+            print(f"   {row['profile_name']:12s}: avg={row['avg_score']:.1f}, "
+                  f"min={row['min_score']:.1f}, max={row['max_score']:.1f}")
     
-    # In Phase 3, you'd add drift detection here:
-    # - Compare today's avg_comfort to last week's
-    # - If delta > threshold, trigger retraining
+    print("\n✅ Feature statistics logged")
 
 
 # ---------------------------------------------------------------------------

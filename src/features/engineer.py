@@ -75,6 +75,129 @@ def comfort_score(
     return round(temp_score + rain_score + wind_score, 2)
 
 
+def comfort_score_multi_profile(
+    temp_mean: float,
+    precipitation: float,
+    wind_speed_max: float,
+    profile_params: dict
+) -> float:
+    """
+    Compute comfort score for a specific profile with custom parameters.
+    
+    This is the Phase 3 version that supports different user profiles
+    (leisure, surfer, cyclist, stargazer, skier) with different preferences.
+    
+    Args:
+        temp_mean: mean temperature in °C
+        precipitation: total rainfall in mm
+        wind_speed_max: max wind speed in km/h
+        profile_params: dict with profile-specific weights and preferences:
+            {
+                'temp_weight': float,
+                'temp_ideal': float,
+                'temp_tolerance': float,
+                'rain_weight': float,
+                'rain_decay': float,
+                'rain_preference': 'avoid'|'neutral'|'seek',
+                'wind_weight': float,
+                'wind_decay': float,
+                'wind_preference': 'avoid'|'neutral'|'seek',
+            }
+    
+    Returns:
+        float score in range [0, ~100]
+    """
+    # Handle None/NaN values
+    if temp_mean is None or math.isnan(temp_mean):
+        temp_score = profile_params['temp_weight'] * 0.5
+    else:
+        # Temperature: Gaussian around ideal
+        temp_score = profile_params['temp_weight'] * math.exp(
+            -0.5 * ((temp_mean - profile_params['temp_ideal']) / profile_params['temp_tolerance']) ** 2
+        )
+    
+    # Rain: behavior depends on preference
+    if precipitation is None or math.isnan(precipitation):
+        rain_score = profile_params['rain_weight'] * 0.5
+    else:
+        if profile_params['rain_preference'] == 'seek':
+            # Inverted: reward precipitation (for skiers wanting snow)
+            rain_score = profile_params['rain_weight'] * (
+                1 - math.exp(-precipitation / profile_params['rain_decay'])
+            )
+        elif profile_params['rain_preference'] == 'neutral':
+            # Don't penalize or reward
+            rain_score = profile_params['rain_weight'] * 0.7
+        else:  # 'avoid'
+            # Standard exponential decay
+            rain_score = profile_params['rain_weight'] * math.exp(
+                -precipitation / profile_params['rain_decay']
+            )
+    
+    # Wind: behavior depends on preference
+    if wind_speed_max is None or math.isnan(wind_speed_max):
+        wind_score = profile_params['wind_weight'] * 0.5
+    else:
+        if profile_params['wind_preference'] == 'seek':
+            # Inverted: reward strong wind (for surfers)
+            wind_score = profile_params['wind_weight'] * (
+                1 - math.exp(-wind_speed_max / profile_params['wind_decay'])
+            )
+        elif profile_params['wind_preference'] == 'neutral':
+            # Don't penalize or reward much
+            wind_score = profile_params['wind_weight'] * 0.7
+        else:  # 'avoid'
+            # Standard exponential decay
+            wind_score = profile_params['wind_weight'] * math.exp(
+                -wind_speed_max / profile_params['wind_decay']
+            )
+    
+    return round(temp_score + rain_score + wind_score, 2)
+
+
+def compute_all_profile_scores(
+    temp_mean: float,
+    precipitation: float,
+    wind_speed_max: float,
+    profiles_df: pd.DataFrame
+) -> dict:
+    """
+    Compute comfort scores for ALL profiles at once.
+    
+    Args:
+        temp_mean: temperature in °C
+        precipitation: rainfall in mm
+        wind_speed_max: wind speed in km/h
+        profiles_df: DataFrame from scoring_profiles table
+    
+    Returns:
+        dict mapping profile_name → comfort_score
+        Example: {'leisure': 87.2, 'surfer': 45.3, 'cyclist': 78.1, ...}
+    """
+    scores = {}
+    
+    for _, profile in profiles_df.iterrows():
+        profile_params = {
+            'temp_weight': profile['temp_weight'],
+            'temp_ideal': profile['temp_ideal'],
+            'temp_tolerance': profile['temp_tolerance'],
+            'rain_weight': profile['rain_weight'],
+            'rain_decay': profile['rain_decay'],
+            'rain_preference': profile['rain_preference'],
+            'wind_weight': profile['wind_weight'],
+            'wind_decay': profile['wind_decay'],
+            'wind_preference': profile['wind_preference'],
+        }
+        
+        score = comfort_score_multi_profile(
+            temp_mean, precipitation, wind_speed_max, profile_params
+        )
+        
+        scores[profile['profile_name']] = score
+    
+    return scores
+
+
 # ---------------------------------------------------------------------------
 # Rolling feature computation
 # ---------------------------------------------------------------------------

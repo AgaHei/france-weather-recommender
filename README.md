@@ -1,13 +1,16 @@
 # France Weather Recommender — MLOps Pipeline
 
-![Python](https://img.shields.io/badge/python-3.11-blue)
+![Python](https://img.shields.io/badge/python-3.12-blue)
 ![Airflow](https://img.shields.io/badge/airflow-2.8-orange)
 ![MLflow](https://img.shields.io/badge/mlflow-2.8-green)
+![Streamlit](https://img.shields.io/badge/streamlit-1.28-red)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-**End-to-end ML system for recommending weekend destinations based on weather forecasts.**
+**End-to-end ML system for recommending weekend destinations based on weather forecasts with multi-profile support.**
 
-Technologies: Python, PostgreSQL (Neon), Airflow, MLflow, scikit-learn, Docker
+Technologies: Python, PostgreSQL (Neon), Airflow, MLflow, scikit-learn, Docker, Streamlit, Plotly
+
+**🌐 Live Demo:** [France Weather Recommender on HF Spaces](https://huggingface.co/spaces/AgaHei/France_Weather_Recommender)
 
 ---
 
@@ -16,9 +19,12 @@ Technologies: Python, PostgreSQL (Neon), Airflow, MLflow, scikit-learn, Docker
 This is a **production-grade MLOps system** that:
 - Fetches daily weather data for 20 French cities
 - Engineers features using rolling windows
+- Supports **5 user profiles** (leisure, surfer, cyclist, stargazer, skier) with customized recommendations
 - Trains two ML models weekly (K-Means clustering + Gradient Boosting regression)
 - Generates daily recommendations with champion/challenger model promotion
+- Provides interactive **Streamlit UI** with maps and profile selection
 - Logs all experiments to MLflow
+- Deployed to **Hugging Face Spaces** for public access
 - Runs entirely on free/open-source tools
 
 **Business goal:** Help users plan weekend trips by recommending destinations with the best weather.
@@ -75,10 +81,31 @@ This is a **production-grade MLOps system** that:
 │      - Identify "good weather" clusters                         │
 │         ↓                                                       │
 │    Stage 2: Regression (fine ranking)                           │
-│      - Predict comfort scores                                   │
+│      - Predict comfort scores for each user profile             │
 │      - Rank cities within good clusters                         │
 │         ↓                                                       │
-│    Write to recommendations table                               │
+│    Write to recommendations & profile_scores tables             │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                        UI/DEPLOYMENT                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Streamlit Web App (deployed to HF Spaces)                      │
+│    ┌──────────────────┐         ┌──────────────────┐            │
+│    │   Profile        │         │ Interactive Map  │            │
+│    │   Selector       │         │  (Plotly/Mapbox)│            │
+│    └────────┬─────────┘         └────────┬─────────┘            │
+│             │                            │                      │
+│             ├────── Neon Database ──────┤                      │
+│             │      (recommendations      │                      │
+│             │       + profile_scores)    │                      │
+│             ↓                            ↓                      │
+│    Detailed Cards & Weather Info                                │
+│      - Top 3 recommendations with metrics                       │
+│      - Hotel suggestions from OSM                               │
+│      - Model performance stats                                  │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -105,9 +132,24 @@ This is a **production-grade MLOps system** that:
 - Rows: 20
 
 **recommendations** — Daily weekend recommendations  
-- Columns: recommendation_date, city, cluster_id, comfort_score_pred, rank
+- Columns: recommendation_date, city, cluster_id, comfort_score_pred, rank, profile_name
 - Updated: Daily by DAG 4
-- Rows: ~100 (5-10 recommendations per day, 7-14 day history)
+- Rows: ~500 (10 recommendations × 5 profiles per day, 7-14 day history)
+
+**scoring_profiles** — User profile definitions
+- Columns: profile_name, temp_weight, rain_weight, wind_weight, temp_optimal, description
+- Updated: Static configuration
+- Rows: 5 (leisure, surfer, cyclist, stargazer, skier)
+
+**profile_scores** — Actual comfort scores per profile
+- Columns: city, feature_date, profile_name, comfort_score
+- Updated: Daily by DAG 2 (feature engineering)
+- Rows: ~1,800 (20 cities × 5 profiles × ~18 days rolling window)
+
+**hotels** — Hotel/accommodation data from OpenStreetMap
+- Columns: city, hotel_name, latitude, longitude, hotel_type
+- Updated: Weekly by DAG 5 (`fetch_hotels`)
+- Rows: ~200-300 hotels across 20 cities
 
 **model_runs** — Model training audit log  
 - Columns: run_date, model_type, metric_name, metric_value, artifact_path, is_champion
@@ -228,7 +270,14 @@ docker-compose up -d
 # 8. Access UIs
 # Airflow: http://localhost:8080 (admin/admin)
 # MLflow:  http://localhost:5001
+
+# 9. Run Streamlit app (optional)
+cd app
+streamlit run streamlit_app.py
+# Streamlit: http://localhost:8501
 ```
+
+**🌐 Alternative:** Use the live deployed version at [HF Spaces](https://huggingface.co/spaces/AgaHei/France_Weather_Recommender)
 
 ### **Running DAGs:**
 
@@ -256,25 +305,73 @@ docker-compose up -d
 
 ---
 
-## 🔮 Future Enhancements (Phase 2 & 3)
+## 🔮 User Profiles (Phase 3 - Completed)
 
-**Phase 2: Hotels Layer**
-- Fetch hotel data from Overpass API (OSM)
-- Add `hotels` table
-- Join recommendations with nearby hotels
-- New DAG: `fetch_hotels` (weekly)
+The system supports **5 distinct user profiles** with customized comfort score calculations:
 
-**Phase 3: Multi-Profile System**
-- Parameterized comfort_score formula
-- Profiles: leisure, surfer, cyclist, stargazer, tornado_chaser
-- User selects profile → different weights/preferences
-- Same pipeline, infinite use cases
+### **🏖️ Leisure (Default)**
+- **Focus:** General comfort for sightseeing and relaxation
+- **Optimal temp:** 20°C | **Weights:** Temp 50%, Rain 30%, Wind 20%
+- **Best for:** City tours, outdoor dining, general tourism
 
-**Phase 4: CI/CD**
+### **🏄 Surfer**  
+- **Focus:** Wind-powered activities, tolerates cooler temps
+- **Optimal temp:** 18°C | **Weights:** Temp 25%, Rain 25%, **Wind 50%**
+- **Best for:** Surfing, windsurfing, kitesurfing
+
+### **🚴 Cyclist**
+- **Focus:** Moderate weather, avoids extreme rain/wind  
+- **Optimal temp:** 15°C | **Weights:** Temp 35%, **Rain 40%**, Wind 25%
+- **Best for:** Road cycling, mountain biking, touring
+
+### **🌌 Stargazer**
+- **Focus:** Clear skies (minimal rain), cool temperatures preferred
+- **Optimal temp:** 12°C | **Weights:** Temp 30%, **Rain 60%**, Wind 10%  
+- **Best for:** Astronomy, night photography, camping
+
+### **⛷️ Skier**
+- **Focus:** Cold temperatures, mountain conditions
+- **Optimal temp:** 5°C | **Weights:** **Temp 70%**, Rain 20%, Wind 10%
+- **Best for:** Skiing, snowboarding, winter sports
+
+**Implementation:** Each profile uses the same Gaussian-exponential comfort formula but with different weights and optimal temperatures, allowing personalized recommendations from the same underlying ML pipeline.
+
+---
+
+## 🌐 Streamlit Web Interface (Deployed)
+
+**Live Demo:** https://huggingface.co/spaces/AgaHei/France_Weather_Recommender
+
+### **Features:**
+- 📊 **Profile Selection** - Choose from 5 user profiles with distinct preferences
+- 🗺️ **Interactive Map** - Plotly-powered map with hover details and colored markers
+- 📅 **Date Selector** - Browse recommendations for different dates
+- 📊 **Weather Metrics** - Temperature, precipitation, wind speed for each city
+- 🏨 **Hotel Integration** - Nearby accommodations from OpenStreetMap data
+- 📈 **Model Stats** - Real-time ML model performance metrics
+
+### **Technical Stack:**
+- **Frontend:** Streamlit with Plotly interactive maps
+- **Backend:** Direct connection to Neon PostgreSQL
+- **Deployment:** Hugging Face Spaces (Git-based CI/CD)
+- **Maps:** Plotly + Mapbox for interactive markers with hover tooltips
+
+---
+
+## 🔮 Future Enhancements (Phase 4 & Beyond)
+
+**Phase 4: CI/CD & Advanced Features**
 - GitHub Actions workflow
 - Automated testing (pytest)
-- Docker image builds
-- Deploy to cloud (AWS, GCP, Azure)
+- Docker image builds  
+- Real-time weather updates API
+- Mobile-responsive design
+
+**Phase 5: Intelligence Layer**
+- Explain AI recommendations (SHAP values)
+- Historical trend analysis
+- Weather pattern clustering
+- Seasonal recommendation adjustments
 
 ---
 
@@ -282,16 +379,21 @@ docker-compose up -d
 
 By building this project, you master:
 - ✅ End-to-end ML pipeline (data → training → deployment)
-- ✅ Airflow orchestration (4 DAGs, dependencies, scheduling)
+- ✅ Airflow orchestration (5 DAGs, dependencies, scheduling)
 - ✅ MLflow experiment tracking
 - ✅ Champion/Challenger pattern
 - ✅ Feature engineering (rolling windows)
 - ✅ Model serving (batch inference)
+- ✅ Multi-profile recommendation systems
 - ✅ PostgreSQL data modeling
 - ✅ Docker containerization
+- ✅ Streamlit web application development
+- ✅ Interactive data visualization (Plotly)
+- ✅ Cloud deployment (Hugging Face Spaces)
 - ✅ Non-linear regression (Gaussian, exponential functions)
 - ✅ Unsupervised learning (K-Means)
 - ✅ Model evaluation (R², silhouette score, cross-validation)
+- ✅ Git-based CI/CD workflows
 
 **Perfect for:** AI Architect exam, ML Engineer interviews, portfolio projects
 
@@ -302,9 +404,10 @@ By building this project, you master:
 ```
 dags/
   dag_fetch_weather.py          # DAG 1: Daily weather ingestion
-  dag_compute_features.py       # DAG 2: Feature engineering
+  dag_compute_features.py       # DAG 2: Feature engineering + profile scores
   dag_retrain_models.py         # DAG 3: Weekly model training
   dag_generate_recommendations.py  # DAG 4: Daily recommendations
+  dag_fetch_hotels.py           # DAG 5: Weekly hotel data from OSM
 
 src/
   data/
@@ -312,10 +415,19 @@ src/
     fetch_weather.py            # Open-Meteo API client
     db.py                       # Neon PostgreSQL connection
   features/
-    engineer.py                 # Rolling windows + comfort_score formula
+    engineer.py                 # Rolling windows + multi-profile comfort scores
   models/
     clustering.py               # K-Means model
     regression.py               # Gradient Boosting model
+
+app/
+  streamlit_app.py              # Interactive web interface
+  requirements.txt              # Streamlit dependencies
+
+france-weather-hf/              # HF Spaces deployment
+  app.py                        # Streamlit app for cloud deployment
+  requirements.txt              # Cloud dependencies
+  README.md                     # HF Spaces documentation
 
 scripts/
   backfill_historical_weather.py  # One-time data backfill
