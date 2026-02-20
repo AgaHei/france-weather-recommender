@@ -24,7 +24,7 @@ Technologies: Python, PostgreSQL (Neon), Airflow, MLflow, scikit-learn, Docker, 
 This is a **production-grade MLOps system** that:
 - Fetches daily weather data for 20 French cities
 - Engineers features using rolling windows
-- Supports **5 user profiles** (leisure, surfer, cyclist, stargazer, skier) with customized recommendations
+- Supports **4 user profiles** (leisure, wind_sports_enthusiast, cyclist, stargazer) with customized recommendations
 - Trains two ML models weekly (K-Means clustering + Gradient Boosting regression)
 - Generates daily recommendations with champion/challenger model promotion
 - Provides interactive **Streamlit UI** with maps and profile selection
@@ -144,7 +144,7 @@ This is a **production-grade MLOps system** that:
 **scoring_profiles** — User profile definitions
 - Columns: profile_name, temp_weight, rain_weight, wind_weight, temp_optimal, description
 - Updated: Static configuration
-- Rows: 5 (leisure, surfer, cyclist, stargazer, skier)
+- Rows: 4 (leisure, wind_sports_enthusiast, cyclist, stargazer)
 
 **profile_scores** — Actual comfort scores per profile
 - Columns: city, feature_date, profile_name, comfort_score
@@ -319,10 +319,10 @@ The system supports **5 distinct user profiles** with customized comfort score c
 - **Optimal temp:** 20°C | **Weights:** Temp 50%, Rain 30%, Wind 20%
 - **Best for:** City tours, outdoor dining, general tourism
 
-### **🏄 Surfer**  
+### **🏄 Wind Sports Enthusiast**  
 - **Focus:** Wind-powered activities, tolerates cooler temps
 - **Optimal temp:** 18°C | **Weights:** Temp 25%, Rain 25%, **Wind 50%**
-- **Best for:** Surfing, windsurfing, kitesurfing
+- **Best for:** Windsurfing, kitesurfing, sailing, skydiving, paragliding, land sailing
 
 ### **🚴 Cyclist**
 - **Focus:** Moderate weather, avoids extreme rain/wind  
@@ -333,11 +333,6 @@ The system supports **5 distinct user profiles** with customized comfort score c
 - **Focus:** Clear skies (minimal rain), cool temperatures preferred
 - **Optimal temp:** 12°C | **Weights:** Temp 30%, **Rain 60%**, Wind 10%  
 - **Best for:** Astronomy, night photography, camping
-
-### **⛷️ Skier**
-- **Focus:** Cold temperatures, mountain conditions
-- **Optimal temp:** 5°C | **Weights:** **Temp 70%**, Rain 20%, Wind 10%
-- **Best for:** Skiing, snowboarding, winter sports
 
 **Implementation:** Each profile uses the same Gaussian-exponential comfort formula but with different weights and optimal temperatures, allowing personalized recommendations from the same underlying ML pipeline.
 

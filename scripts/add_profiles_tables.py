@@ -72,9 +72,9 @@ VALUES
      20, 25, 'avoid'  -- Wind: avoid (moderate penalty)
     ),
     
-    -- Surfer: Beach surfing, watersports
-    ('surfer',
-     'Beach surfing and watersports. Seeking strong winds and waves.',
+    -- Wind Sports Enthusiast: Windsurfing, kitesurfing, sailing, skydiving, paragliding, land sailing
+    ('wind_sports_enthusiast',
+     'Wind sports including windsurfing, kitesurfing, sailing, skydiving, paragliding, and land sailing. Seeking strong winds and favorable conditions.',
      '🏄',
      30, 18, 8,       -- Temp: prefer mild (18°C), wider tolerance
      10, 10, 'neutral', -- Rain: don''t care much
@@ -97,15 +97,6 @@ VALUES
      20, 15, 10,      -- Temp: any temp fine (wide tolerance)
      40, 3, 'avoid',  -- Rain: clouds ruin everything (very harsh)
      40, 20, 'avoid'  -- Wind: affects telescope stability
-    ),
-    
-    -- Skier: Snow sports, winter activities
-    ('skier',
-     'Snow sports and winter activities. Seeking cold temps and fresh snow.',
-     '⛷️',
-     40, 0, 5,        -- Temp: want freezing (0°C), narrow tolerance
-     30, 10, 'seek',  -- Rain/Snow: WANT precipitation!
-     30, 30, 'neutral' -- Wind: moderate tolerance
     )
 ON CONFLICT (profile_name) DO UPDATE SET
     description = EXCLUDED.description,
@@ -187,7 +178,7 @@ def run_migration():
             # Step 2: Seed default profiles
             print("\n🌱 Step 2: Seeding default profiles...")
             cur.execute(SEED_PROFILES)
-            print("   ✅ 5 profiles seeded:")
+            print("   ✅ 4 profiles seeded:")
             print("      • leisure (🏖️)  — Weekend relaxation")
             print("      • surfer (🏄)   — Beach sports, strong wind")
             print("      • cyclist (🚴)  — Road cycling, dry weather")
@@ -210,7 +201,7 @@ def run_migration():
     print("=" * 70)
     
     print("\nDatabase changes:")
-    print("  • scoring_profiles     — 5 profile definitions")
+    print("  • scoring_profiles     — 4 profile definitions")
     print("  • profile_scores       — Multi-profile comfort scores")
     print("  • recommendations      — Now includes profile_name")
     

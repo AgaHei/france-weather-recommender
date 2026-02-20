@@ -4,7 +4,7 @@ streamlit_app.py
 Streamlit UI for France Weather Recommender with multi-profile support.
 
 Features:
-- Profile selector (leisure, surfer, cyclist, stargazer, skier)
+- Profile selector (leisure, wind_sports_enthusiast, cyclist, stargazer)
 - Interactive Folium map with ranked city markers
 - Weather details + hotel recommendations
 - Model performance metrics
@@ -451,8 +451,9 @@ with st.expander("🔍 Compare All Profiles"):
             for profile_name in comparison_df['profile_name'].unique():
                 profile_recs = comparison_df[comparison_df['profile_name'] == profile_name]
                 
-                # Get icon
-                profile_icon = [p['icon'] for p in profiles if p['profile_name'] == profile_name][0]
+                # Get icon (with safe fallback)
+                profile_icons = [p['icon'] for p in profiles if p['profile_name'] == profile_name]
+                profile_icon = profile_icons[0] if profile_icons else "🎯"
                 
                 st.markdown(f"**{profile_icon} {profile_name.capitalize()}:**")
                 

@@ -3,18 +3,20 @@ dag_fetch_hotels.py
 -------------------
 DAG 5: Fetch hotel data for top recommended cities.
 
-Schedule: Weekly on Monday at 1:00 AM (after weekly retraining)
-Duration: ~30 seconds (3 cities × API calls with delays)
+Schedule: Twice weekly (Monday & Thursday at 1:00 AM)
+Duration: ~45 seconds (5 cities × API calls with delays)
 
 What it does:
-1. Gets top 3 cities from latest recommendations
-2. Fetches hotels from Overpass API (OpenStreetMap)
-3. Filters to top 5-10 hotels per city
-4. Inserts into hotels table
+1. Gets top 5 cities from latest recommendations (expanded from 3)
+2. Checks which cities need fresh hotel data (older than 2 weeks)
+3. Fetches hotels from Overpass API (OpenStreetMap) for cities needing updates
+4. Filters to top 10 hotels per city
+5. Inserts into hotels table with conflict resolution
 
 MLOps patterns demonstrated:
 - Data enrichment (recommendations → hotels)
-- External API integration with rate limiting
+- External API integration with rate limiting & error handling
+- Intelligent refresh strategy (only fetch when needed)
 - Idempotent writes (ON CONFLICT DO UPDATE)
 - Dependency on upstream DAG (needs recommendations first)
 """
@@ -49,8 +51,8 @@ default_args = {
 dag = DAG(
     'fetch_hotels',
     default_args=default_args,
-    description='Weekly hotel data fetching for top recommended cities',
-    schedule_interval='0 1 * * 1',  # Monday at 1:00 AM (after Sunday retraining)
+    description='Twice-weekly hotel data fetching for top recommended cities',
+    schedule_interval='0 1 * * 1,4',  # Monday & Thursday at 1:00 AM
     catchup=False,
     tags=['hotels', 'data-enrichment'],
 )
@@ -61,24 +63,44 @@ dag = DAG(
 
 def identify_target_cities(**context):
     """
-    Identify which cities need hotel data (top 3 from latest recommendations).
+    Identify which cities need hotel data (top 5 from latest recommendations + any missing).
     """
     print("\n🎯 Identifying target cities for hotel fetching...")
     
-    # Get top 3 cities from latest recommendations
-    top_cities = get_top_cities_from_recommendations(n=3)
+    # Get top 5 cities from latest recommendations (expanded from 3)
+    top_cities = get_top_cities_from_recommendations(n=5)
     
     if not top_cities:
         raise ValueError(
             "No recommendations found! Run dag_generate_recommendations first."
         )
     
-    print(f"\n✅ Target cities: {', '.join(top_cities)}")
+    # Check which top cities already have recent hotel data (within 2 weeks)
+    from src.data.db import execute_query
+    
+    recent_hotels = execute_query("""
+        SELECT DISTINCT city 
+        FROM hotels 
+        WHERE city = ANY(%s) 
+          AND fetched_at >= NOW() - INTERVAL '14 days'
+    """, (top_cities,))
+    
+    cities_with_recent_hotels = {h['city'] for h in recent_hotels}
+    
+    # Target cities that need fresh hotel data
+    target_cities = [city for city in top_cities if city not in cities_with_recent_hotels]
+    
+    if target_cities:
+        print(f"\n✅ Target cities (need hotel data): {', '.join(target_cities)}")
+    else:
+        print(f"\n✅ All top cities have recent hotel data")
+        target_cities = top_cities[:2]  # Refresh top 2 anyway
+        print(f"   Refreshing top 2 cities: {', '.join(target_cities)}")
     
     # Push to XCom for next task
-    context['task_instance'].xcom_push(key='target_cities', value=top_cities)
+    context['task_instance'].xcom_push(key='target_cities', value=target_cities)
     
-    return top_cities
+    return target_cities
 
 
 def fetch_and_store_hotels(**context):
@@ -101,9 +123,9 @@ def fetch_and_store_hotels(**context):
     # Fetch hotels
     hotels = fetch_hotels_for_cities(
         cities=target_cities,
-        radius_meters=10000,  # 10km radius
+        radius_meters=8000,  # 8km radius (smaller for dense cities)
         max_results_per_city=10,  # Top 10 per city
-        delay_seconds=2.0  # Respectful rate limiting
+        delay_seconds=3.0  # Extra respectful rate limiting
     )
     
     if not hotels:
@@ -191,8 +213,8 @@ def validate_hotel_data(**context):
     for city, count in summary['hotels_per_city'].items():
         if count == 0:
             print(f"   ⚠️  WARNING: No hotels found for {city}")
-        elif count < 3:
-            print(f"   ⚠️  WARNING: Only {count} hotels for {city} (expected 5-10)")
+        if count < 5:
+            print(f"   ⚠️  WARNING: Only {count} hotels for {city} (expected 8-10)")
         else:
             print(f"   ✅ {city}: {count} hotels")
     

@@ -142,7 +142,7 @@ graph TB
 
 **Outputs:**
 - `weather_features`: temp_mean_7d, temp_mean_3d, precip_sum_7d, precip_sum_3d, wind_max_7d, wind_max_3d
-- `profile_scores`: Leisure: 67.0/100, Surfer: 83.8/100, Cyclist: 30.5/100, etc.
+- `profile_scores`: Leisure: 67.0/100, Wind Sports Enthusiast: 83.8/100, Cyclist: 30.5/100, etc.
 
 ---
 
@@ -262,7 +262,7 @@ ELSE:
 
 ### 🎨 User Interface (Streamlit on HF Spaces)
 **Features:**
-- Profile dropdown: 🏖️ Leisure, 🏄 Surfer, 🚴 Cyclist, ⭐ Stargazer, ⛷️ Skier
+- Profile dropdown: 🏖️ Leisure, 🏄 Wind Sports Enthusiast, 🚴 Cyclist, ⭐ Stargazer
 - Interactive map: Folium/Plotly with ranked markers
 - City cards: Weather metrics + top 5 hotels
 - Model metrics: Current champion R² + silhouette
